@@ -438,6 +438,9 @@
     #define BLTOUCH_STOW      90
     #define BLTOUCH_SELFTEST 120
     #define BLTOUCH_RESET    160
+    #define BLTOUCH_SW_MODE   60
+    #define BLTOUCH_5V_MODE  140
+    #define BLTOUCH_OD_MODE  150
     #define _TEST_BLTOUCH(P) (READ(P##_PIN) != P##_ENDSTOP_INVERTING)
 
     // Always disable probe pin inverting for BLTouch
