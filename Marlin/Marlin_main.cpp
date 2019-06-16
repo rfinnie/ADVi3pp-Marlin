@@ -2235,19 +2235,61 @@ static void clean_up_after_endstop_or_probe_move() {
     refresh_cmd_timeout();
 
     // Double-probing does a fast probe followed by a slow probe
+    // This is very specific to my particular BLTouch v3 setup. -RF
     #if MULTIPLE_PROBING >= 2
 
-      // Do a first probe at the fast speed
-      if (do_probe_move(-10, Z_PROBE_SPEED_FAST)) return NAN;
+      float before_probe_z = current_position[Z_AXIS];
+      float first_probe_z = 0;
+      float probes_total = 0;
 
-      float first_probe_z = current_position[Z_AXIS];
+      while ((first_probe_z <= 0) || (first_probe_z >= 4)) {
+        // move up to make clearance for the probe
+        if (before_probe_z != current_position[Z_AXIS])
+          do_blocking_move_to_z(before_probe_z, MMM_TO_MMS(Z_PROBE_SPEED_FAST));
 
-      #if ENABLED(DEBUG_LEVELING_FEATURE)
-        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPAIR("1st Probe Z:", first_probe_z);
-      #endif
+        // Do a first probe at the fast speed
+        if (do_probe_move(-10, Z_PROBE_SPEED_FAST)) continue;
 
-      // move up to make clearance for the probe
-      do_blocking_move_to_z(current_position[Z_AXIS] + Z_CLEARANCE_BETWEEN_PROBES, MMM_TO_MMS(Z_PROBE_SPEED_FAST));
+        first_probe_z = current_position[Z_AXIS];
+
+        #if ENABLED(DEBUG_LEVELING_FEATURE)
+          if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPAIR("1st Probe Z:", first_probe_z);
+        #endif
+      }
+
+      for (uint8_t p = MULTIPLE_PROBING; --p;) {
+        do_blocking_move_to_z(first_probe_z + 2.0, MMM_TO_MMS(Z_PROBE_SPEED_FAST));
+
+        if (do_probe_move(-10, Z_PROBE_SPEED_SLOW)) {
+          p += 1;
+          continue;
+        }
+        const float z2 = current_position[Z_AXIS];
+
+        #if ENABLED(DEBUG_LEVELING_FEATURE)
+          if (DEBUGGING(LEVELING)) {
+            SERIAL_ECHOPAIR("Probe Z:", z2);
+            SERIAL_ECHOLNPAIR(" Number:", p);
+            SERIAL_ECHOLNPAIR(" Discrepancy:", first_probe_z - z2);
+          }
+        #endif
+
+        // If the two measures are too different, there was a problem
+        if(abs(z2 - first_probe_z) > 10.0) {
+          p += 1;
+          continue;
+        }
+
+        // If they're outside of 10%, try again
+        if((abs(z2 - first_probe_z) / first_probe_z) > 0.1) {
+          p += 1;
+          continue;
+        }
+        probes_total += current_position[Z_AXIS];
+      }
+
+      // Return a weighted average of the fast and slow probes
+      return ((probes_total * (1.0 / (MULTIPLE_PROBING - 1))) * (1.0 + MULTIPLE_PROBING) + first_probe_z * 2.0) * (2.0 / (3.0 + MULTIPLE_PROBING) / 2.0);
 
     #else
 
@@ -2262,42 +2304,9 @@ static void clean_up_after_endstop_or_probe_move() {
         if (!do_probe_move(z, Z_PROBE_SPEED_FAST))
           do_blocking_move_to_z(current_position[Z_AXIS] + Z_CLEARANCE_BETWEEN_PROBES, MMM_TO_MMS(Z_PROBE_SPEED_FAST));
       }
-    #endif
 
-    #if MULTIPLE_PROBING >= 2
-      float probes_total = 0;
-      for (uint8_t p = MULTIPLE_PROBING; --p;) {
-    #endif
-
-        // move down slowly to find bed
-        if (do_probe_move(-10, Z_PROBE_SPEED_SLOW)) return NAN;
-
-    #if MULTIPLE_PROBING >= 2
-        const float z2 = current_position[Z_AXIS];
-
-        #if ENABLED(DEBUG_LEVELING_FEATURE)
-          if (DEBUGGING(LEVELING)) {
-            SERIAL_ECHOPAIR("Probe Z:", z2);
-            SERIAL_ECHOLNPAIR(" Number:", p);
-            SERIAL_ECHOLNPAIR(" Discrepancy:", first_probe_z - z2);
-          }
-        #endif
-
-        // If the two measures are too different, there was a problem
-        if(abs(z2 - first_probe_z) > 10.0)
-          return NAN;
-
-        probes_total += current_position[Z_AXIS];
-        if (p > 1) do_blocking_move_to_z(current_position[Z_AXIS] + Z_CLEARANCE_BETWEEN_PROBES, MMM_TO_MMS(Z_PROBE_SPEED_FAST));
-      }
-    #endif
-
-    #if MULTIPLE_PROBING >= 2
-
-      // Return a weighted average of the fast and slow probes
-      return ((probes_total * (1.0 / (MULTIPLE_PROBING - 1))) * (1.0 + MULTIPLE_PROBING) + first_probe_z * 2.0) * (2.0 / (3.0 + MULTIPLE_PROBING) / 2.0);
-
-    #else
+      // move down slowly to find bed
+      if (do_probe_move(-10, Z_PROBE_SPEED_SLOW)) return NAN;
 
       // Return the single probe result
       return current_position[Z_AXIS];
