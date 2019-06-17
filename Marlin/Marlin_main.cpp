@@ -2269,8 +2269,8 @@ static void clean_up_after_endstop_or_probe_move() {
         #if ENABLED(DEBUG_LEVELING_FEATURE)
           if (DEBUGGING(LEVELING)) {
             SERIAL_ECHOPAIR("Probe Z:", z2);
+            SERIAL_ECHOPAIR(" Discrepancy:", first_probe_z - z2);
             SERIAL_ECHOLNPAIR(" Number:", p);
-            SERIAL_ECHOLNPAIR(" Discrepancy:", first_probe_z - z2);
           }
         #endif
 
